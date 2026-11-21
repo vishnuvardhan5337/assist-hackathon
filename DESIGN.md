@@ -9,6 +9,7 @@ flowchart LR
     A["store day N records<br/>+ day N-1 feedback"] --> B["model fallback<br/>(unmatched only)"]
     B --> C["code checks<br/>quote, person, date"]
     C --> D[("SQLite memory")]
+    A --> VX[("Chroma vectors<br/>org, scope, readers")]
   end
   subgraph BRIEF_ASK["BRIEF / ASK"]
     direction LR
@@ -18,6 +19,7 @@ flowchart LR
     O --> V["source check<br/>exists, visible"]
   end
   D --> G
+  VX -. "filtered search<br/>(open questions)" .-> F
   style B stroke-dasharray: 4 3
   style G stroke:#3730A3,stroke-width:2px
 ```
@@ -40,6 +42,8 @@ flowchart LR
 SQLite file `.assist_store/assist.db`: raw records, feedback (read one day late, as the harness requires), forget requests and an LLM cache. Facts are **rebuilt from visible records on every call**, never stored in a shared summary. Two results follow:
 - What one person may not see can never shape another person's output.
 - "Forget" works everywhere at once: the forgotten record is filtered out at the gate, and lines that mention it are dropped.
+
+**Vector DB.** Records are also indexed in Chroma (local, persistent, offline embedder) for open questions. Each vector carries its company, visibility scope and readers, and every search filters on them *inside* Chroma, then passes the privacy gate again. Keyword and vector results are fused (reciprocal rank fusion). The vector DB only finds candidates; it never decides a fact, an owner or a date. If it is unavailable, keyword search takes over.
 
 Preferences and ignored topics belong only to the person who gave them. Corrections fix a team fact, but only for people in the corrector's own company.
 

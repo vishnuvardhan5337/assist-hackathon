@@ -13,6 +13,7 @@ from datetime import timedelta
 from . import facts as F
 from . import llm
 from . import memory
+from . import vectors
 from .llm import Usage
 from .world import WEEKDAYS, STOPWORDS, fmt_day, local_date, next_weekday, parse_ts, record_text
 
@@ -330,7 +331,27 @@ def _free_answer(world, person, q, vis, matched, usage, forgotten, at=None):
             mine = 1 if r.get("author") == person else 0
             scored.append((s, mine, r["at"], r))
     scored.sort(key=lambda x: (x[0], x[1], x[2]), reverse=True)
-    top = [x[3] for x in scored[:6] if x[0] >= max(1, min(2, len(qw)))]
+    min_hits = max(1, min(2, len(qw)))
+    keyword_ranked = [x[3] for x in scored if x[0] >= min_hits][:20]
+
+    # vector DB: semantic neighbours, privacy-filtered inside Chroma, then intersected with the gate again
+    by_id = {r["id"]: r for r in vis}
+    org = world.org_of.get(person)
+    hits = vectors.search(person, org, q, until_ts=at, k=12) or []
+    vector_ranked = [by_id[i] for i, sim in hits if i in by_id and sim >= 0.25
+                     and by_id[i].get("type") != "notification"
+                     and not (str(by_id[i].get("author", "")).startswith("ext:") and not by_id[i].get("client"))]
+
+    # hybrid: reciprocal rank fusion of keyword and vector rankings
+    fused = {}
+    for ranking in (keyword_ranked, vector_ranked):
+        for rank, r in enumerate(ranking):
+            fused.setdefault(r["id"], [r, 0.0])[1] += 1.0 / (60 + rank)
+    both = {r["id"] for r in keyword_ranked} & {r["id"] for r in vector_ranked}
+    ranked = sorted(fused.values(), key=lambda x: (x[0]["id"] in both, x[1]), reverse=True)
+    kw_ids = {x["id"] for x in keyword_ranked}
+    strong = {i for i, sim in hits if sim >= 0.5}       # a vector-only hit must be very close to count on its own
+    top = [r for r, _ in ranked if r["id"] in kw_ids or r["id"] in strong][:6]
     top = [r for r in top if not any(all(t in record_text(r).lower() for t in terms) for terms in forgotten)]
     if not top:
         out["answer"] = {"text": NOTHING, "sources": []}

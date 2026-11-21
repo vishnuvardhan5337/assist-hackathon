@@ -190,12 +190,12 @@ def _topic_hit(topic, blob):
     return len(words) >= 2 and sum(w in low for w in words) >= 2
 
 
-def question_for(world, changes, proms, day_str):
+def question_for(world, changes, proms, day_str, person=None):
     for c in changes:
         if "blocked" in c["text"]:
             name = c["text"].split(" is blocked")[0]
             return {"text": f"What do we need to unblock {name}, and who owns that?", "sources": c["sources"]}
-    overdue = [p for p in proms if p["due"] < day_str]
+    overdue = [p for p in proms if p["due"] < day_str and p["owner"] != person]
     if overdue:
         p = overdue[0]
         return {"text": f"{world.first(p['owner'])} promised {p['what']} by {fmt_day(p['due'])}. Is it still coming?",
@@ -243,7 +243,7 @@ def run(world, person, day_str):
                     if len(opens) == 3:
                         break
                 b["open_these"] = opens
-                b["question_to_ask"] = question_for(world, changes, proms, day_str)
+                b["question_to_ask"] = question_for(world, changes, proms, day_str, person)
         b["usage"] = None
         out.append(b)
     u = usage.as_dict()

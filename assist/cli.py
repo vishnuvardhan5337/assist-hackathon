@@ -18,15 +18,19 @@ from . import store
 
 def cmd_ingest(day: int):
     con = store.connect(fresh=(day == 1))          # day 1 starts a fresh store
+    from . import vectors
+    if day == 1:
+        vectors.reset()
     root = store.pack_root()
     path = os.path.join(root, "data", "days", f"day-{day:02d}.jsonl")
-    n = 0
+    n, day_records = 0, []
     if os.path.isfile(path):
         with open(path, encoding="utf-8") as f:
             for line in f:
                 if line.strip():
                     r = json.loads(line)
                     con.execute("INSERT OR REPLACE INTO records VALUES (?,?,?,?)", (r["id"], day, r.get("at", ""), line.strip()))
+                    day_records.append(r)
                     n += 1
     # feedback written on day N-1 reaches us now (never earlier)
     fpath = os.path.join(root, "data", "feedback", f"day-{day - 1:02d}.jsonl")
@@ -50,7 +54,8 @@ def cmd_ingest(day: int):
     except Exception:
         traceback.print_exc(file=sys.stderr)
         found = 0
-    return {"ok": True, "day": day, "records": n, "feedback": nf, "model_facts": found,
+    indexed = vectors.index_records(day_records)   # vector DB (Chroma, local); -1 = unavailable
+    return {"ok": True, "day": day, "records": n, "feedback": nf, "vectors": indexed, "model_facts": found,
             "model_tokens": usage.input_tokens + usage.output_tokens}
 
 
