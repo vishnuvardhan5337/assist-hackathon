@@ -11,3 +11,6 @@ assist.egg-info/
 .assist_store/
 .pytest_cache/
 .DS_Store
+*.aux
+*.log
+*.out

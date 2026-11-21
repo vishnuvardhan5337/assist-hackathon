@@ -1,7 +1,7 @@
 # Work assistant that remembers (BuildSprint Round 3)
 
 Meeting briefs and short answers for Kitepoint Studio. Every line comes from the data with its record id, it improves from feedback, and it never shows one person's private things to another.
-Design: see [`DESIGN.md`](DESIGN.md).
+Design note: [`docs/design_note.pdf`](docs/design_note.pdf) (one page, LaTeX source in `docs/design_note.tex`; the same content as text is in [`DESIGN.md`](DESIGN.md)).
 
 ## Run it (one command)
 
@@ -41,6 +41,7 @@ Official scorer: **85.0 / 85** (+ design note /10 by judges), with privacy 1.00 
 ## Layout
 | file | what it does |
 |---|---|
+| `docs/design_note.pdf` | the one-page design note (LaTeX source alongside) |
 | `main.py` | entry point for the harness |
 | `assist/cli.py` | the four commands; `ingest` stores day N and feedback from day N-1 |
 | `assist/store.py` | SQLite memory, pack and store paths |
