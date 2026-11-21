@@ -2,6 +2,27 @@
 
 **Principle: code decides, the model only reads language.** Who may see what, which value is newest, what has expired and what was forgotten are all decided by plain, testable Python. A small model (Groq, free tier) is called only where code cannot read the language: nicknames such as "the London account", open questions such as "When is my Dubai trip?", and feedback in unusual wording. Every printed line cites record ids, and code checks those ids before printing. On days 1 to 5 almost no output needs the model, so most cost 0 tokens.
 
+```mermaid
+flowchart LR
+  subgraph INGEST
+    direction LR
+    A["store day N records<br/>+ day N-1 feedback"] --> B["model fallback<br/>(unmatched only)"]
+    B --> C["code checks<br/>quote, person, date"]
+    C --> D[("SQLite memory")]
+  end
+  subgraph BRIEF_ASK["BRIEF / ASK"]
+    direction LR
+    G["<b>privacy gate</b><br/>who may see what"] --> F["facts + resolver<br/>newest wins"]
+    F --> M["person's memory<br/>prefs, forget, expiry"]
+    M --> O["lines with sources<br/>or nothing_new"]
+    O --> V["source check<br/>exists, visible"]
+  end
+  D --> G
+  style B stroke-dasharray: 4 3
+  style G stroke:#3730A3,stroke-width:2px
+```
+
+
 ## 1. How do we pick the records for a brief, and what goes in it?
 1. **Privacy gate first.** `World.visible(person)` keeps only the person's own company, team records, their own private notes and restricted records that list them. It also drops anything they asked us to forget. Nothing outside this set is read again.
 2. **Meetings.** These are the person's calendar events whose start falls on the date in *their* time zone. For each one, the window is everything since their previous meeting with the same client (by date; a later meeting on the same day has not happened yet). A first meeting gets everything so far.
