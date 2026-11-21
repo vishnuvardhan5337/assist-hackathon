@@ -13,6 +13,7 @@ import re
 
 from . import facts as F
 from . import memory
+from . import write
 from .llm import Usage
 from .world import fmt_day, local_date, parse_day_text, parse_ts
 
@@ -87,7 +88,7 @@ def build_changes(world, person, client, since_day, vis, corrections):
         out.append({"text": text, "sources": srcs[:3], "prio": 1, "at": now["at"], "kind": "fact"})
 
     # 2) decisions from meeting notes
-    for d in F.decisions(crec):
+    for d in F.decisions(crec, world):
         if d["rec"]["_day"] >= since_day:
             out.append({"text": f"Decision: {d['text']}", "sources": [d["rec"]["id"]], "prio": 1,
                         "at": d["rec"]["at"], "kind": "decision"})
@@ -230,6 +231,7 @@ def run(world, person, day_str):
                 proms = [p for p in F.promises(crec, world)
                          if not any(all(t in p["what"].lower() for t in terms) for terms in forgotten)]
                 proms.sort(key=lambda p: (p["due"], p["rec"]["at"]))
+                changes, model_q = write.write(world, person, m, changes, proms, usage, prefs)   # model: pick + plain words
                 b["status"] = "brief"
                 b["changed"] = [{"text": c["text"], "sources": c["sources"]} for c in changes]
                 b["promises"] = [{"owner": p["owner"], "what": p["what"], "due": p["due"],
@@ -243,7 +245,7 @@ def run(world, person, day_str):
                     if len(opens) == 3:
                         break
                 b["open_these"] = opens
-                b["question_to_ask"] = question_for(world, changes, proms, day_str, person)
+                b["question_to_ask"] = model_q or question_for(world, changes, proms, day_str, person)
         b["usage"] = None
         out.append(b)
     u = usage.as_dict()

@@ -227,12 +227,19 @@ DELIVERED = re.compile(r"(?i)\b(?:sharing|attached|attaching|here is|here's|sent
 DELIVERED_LOOSE = re.compile(r"(?i)^\s*(?:hi\W+\w*\W+)?(?:sharing|attaching|here is|here's|uploaded|sent)\s+(?:the\s+)?(?P<what>[^.!?\n]{3,60}?)\s*(?:[.!]|$| for | with | now)")
 
 
-def decisions(recs):
+def decisions(recs, world=None):
+    """'Decision: ...' lines (rules); where no rule matched a record, decisions the model found (checked at ingest)."""
     out = []
     for r in recs:
+        found = False
         if r.get("type") in ("note", "doc", "mail", "chat"):
             for m in DECISION.finditer(r.get("body") or ""):
                 out.append({"text": m[1].rstrip("."), "rec": r})
+                found = True
+        if not found and world is not None:
+            for f in getattr(world, "llm_facts", {}).get(r["id"], []):
+                if f["kind"] == "decision":
+                    out.append({"text": f["what"], "rec": r})
     return out
 
 

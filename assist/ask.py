@@ -157,7 +157,93 @@ def run(world, person, at, question):
             if ans:
                 return ans
 
+    # rules could not place the question: the model reads it once, code checks what it says
+    routed = _routed(world, person, at, q, vis, tasks, client, phrase, client_sure, matched, usage)
+    if routed:
+        return routed
     return _free_answer(world, person, q, vis, matched, usage, forgotten, at)
+
+
+# ------------------------------------------------------------------ model: understanding the question
+INTENTS = ("owner", "due", "status", "summary", "leave", "other")
+
+
+def understand(world, person, q, vis, tasks, client_hint=None, usage=None):
+    """When rules cannot place a question, the model reads it ONCE and says what it is about.
+    It may only pick ids from the lists we give it; code checks every id and decides the answer itself.
+    The model never decides to refuse: privacy refusals come only from code."""
+    from collections import Counter
+    from .vectors import hash_embed
+    if not llm.enabled():
+        return None
+    aliases = world.client_aliases(vis)
+    by_client = {}
+    for a, cid in aliases.items():
+        by_client.setdefault(cid, []).append(a)
+    domains = {}
+    for r in vis:
+        for who in [r.get("author")] + list(r.get("to") or []):
+            if r.get("client") and isinstance(who, str) and who.startswith("ext:") and "@" in who:
+                domains.setdefault(r["client"], Counter())[who.split("@")[1]] += 1
+    clients = "\n".join(f'{c["id"]}: {world.client_name.get(c["id"], c["id"])}; also called: '
+                         f'{", ".join(sorted(by_client.get(c["id"], []))[:6])}; mail domains: '
+                         f'{", ".join(d for d, _ in domains.get(c["id"], Counter()).most_common(2))}'
+                         for c in world.clients)
+    qv = hash_embed(q)
+    pool = [t for t in tasks.values() if not client_hint or t["client"] == client_hint] or list(tasks.values())
+    pool.sort(key=lambda t: -sum(a * b for a, b in zip(qv, hash_embed(t["title"] + " " + (t["client"] or "")))))
+    task_lines = "\n".join(f'{t["id"]} | {t["title"]} | {t["client"] or "-"}' for t in pool[:25])
+    prompt = (f"A team member ({world.name(person)}) asked their work assistant:\n<record id=\"question\" type=\"question\">"
+              f"{q.replace('<', '(').replace('>', ')')}</record>\n\nClients:\n{clients}\n\nTasks (id | title | client):\n{task_lines}\n\n"
+              "Say what the question is about. Nicknames, short names and misspellings of a client count (e.g. 'Cobalt' = Cobaltline).\n"
+              'Reply {"client": client id or null, "intent": "owner" (who owns/handles), "due" (when), "status", '
+              '"summary" (general update), "leave" (is someone away) or "other", "task": task id or null, '
+              '"topic": short topic such as "billing" or "launch" or null, "person": a first name the question asks about or null, '
+              '"action": "answer" or "clarify", "options": [task ids] only when action is "clarify"}.\n'
+              'Use "clarify" only if two or more listed tasks fit the question equally well.')
+    data = llm.call_json(world.con, prompt, usage, budget=3000, max_out=300)
+    if not isinstance(data, dict):
+        return None
+    out = {"client": data.get("client") if data.get("client") in world.client_name else None,
+           "intent": data.get("intent") if data.get("intent") in INTENTS else "other",
+           "task": tasks.get(data.get("task")) if isinstance(data.get("task"), str) else None,
+           "topic": str(data.get("topic") or "")[:30].lower() or None,
+           "person": str(data.get("person") or "")[:30] or None,
+           "action": "clarify" if data.get("action") == "clarify" else "answer",
+           "options": [tasks[i] for i in (data.get("options") or []) if isinstance(i, str) and i in tasks]}
+    return out
+
+
+def _routed(world, person, at, q, vis, tasks, client, phrase, client_sure, matched, usage):
+    """Use the model's reading of the question to reach the same code paths. Returns an output or None."""
+    u = understand(world, person, q, vis, tasks, client if client_sure else None, usage)
+    if not u:
+        return None
+    org = world.org_of.get(person)
+    cid = client if client_sure else (u["client"] or client)
+    m = matched if client_sure or not cid else [{"phrase": phrase or cid, "id": cid, "sources": []}]
+    if u["action"] == "clarify" and len(u["options"]) >= 2:
+        out = empty(usage)
+        opts = u["options"][:4]
+        out["clarify"] = {"question": "Which one do you mean: " + " or ".join(t["title"] for t in opts) + "?",
+                          "options": [{"id": t["id"], "text": t["title"]} for t in opts]}
+        out["matched"] = _clean_matched(m)
+        out["usage"] = usage.as_dict()
+        return out
+    if u["intent"] == "leave" and u["person"] and world.people_named(u["person"].split()[0], org):
+        return _leave_answer(world, person, at, u["person"].split()[0], vis, usage)
+    t = u["task"]
+    if t and (not cid or not t["client"] or t["client"] == cid):
+        if t["client"]:
+            m = _clean_matched(m) if any(x.get("id") == t["client"] for x in m) else \
+                [{"phrase": phrase or t["client"], "id": t["client"], "sources": []}]
+        intent = u["intent"] if u["intent"] in ("owner", "due", "status") else "summary"
+        return _task_answer(world, t, intent, m, usage)
+    if cid and u["topic"] and u["intent"] in ("owner", "summary", "other"):
+        ans = _fact_owner(world, person, cid, q + " " + u["topic"], vis, m, usage)
+        if ans:
+            return ans
+    return None
 
 
 def _leave_answer(world, person, at, name, vis, usage):

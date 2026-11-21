@@ -30,11 +30,11 @@ def estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
-def wrap(r) -> str:
+def wrap(r, limit: int = 600) -> str:
     body = (r.get("body") or "").replace("<", "(").replace(">", ")")
     extra = r.get("title") or r.get("subject") or ""
     head = f'id="{r["id"]}" type="{r.get("type")}" at="{r.get("at")}" author="{r.get("author")}"'
-    return f"<record {head}>{(extra + ': ') if extra else ''}{body[:600]}</record>"
+    return f"<record {head}>{(extra + ': ') if extra else ''}{body[:limit]}</record>"
 
 
 class Usage:

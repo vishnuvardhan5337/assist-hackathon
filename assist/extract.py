@@ -17,15 +17,21 @@ from .world import World, local_date, parse_day_text
 
 CUES = re.compile(r"(?i)\b(over to|hand(?:ing|s|ed)? over|responsible|handl\w*|owner|owns|in charge|point of contact|"
                   r"take[sn]? over|took over|moved?|moving|push\w*|postpon\w*|resched\w*|launch\w*|go-live|deadline|"
-                  r"will|'ll|tak|tomorrow|kal|parso|expect|deliver\w*|from me)\b")
-PROMPT = """These are work messages. Find ONLY these three kinds of facts:
+                  r"will|'ll|tak|tomorrow|kal|parso|aaj|dunga|dungi|denge|expect|deliver\w*|from me|"
+                  r"decid\w*|agreed|outcome|final call|dropp\w*|scrap\w*|cut|approv\w*|signed off|going with|"
+                  r"confirm\w*|cancel\w*|parked|deferred|no longer|instead|not)\b")
+PROMPT = """These are work messages (English, Hindi or Hinglish). Find ONLY these four kinds of facts:
 - "owner": someone now owns/handles a topic for a client (e.g. billing). "person" = the NEW owner (who has it
   AFTER the change), "previous" = who had it before (or null). Never put the person handing it over in "person".
 - "date": a client milestone (e.g. launch) moved to a new date.
 - "promise": the AUTHOR commits to deliver something; give what and when (a date like 14 Nov, or a word like tomorrow, Friday, EOD).
+  Hinglish counts: "kal tak bhej dungi" = I will send it by tomorrow; "Friday tak kar dunga" = I will do it by Friday.
+- "decision": a decision or outcome agreed for the client (something approved, dropped, chosen, cancelled, moved out of
+  scope). "what" = the decision in a few plain words, using words from the record (e.g. "Store locator dropped from phase 1").
+A correction such as "No, Arjun handles billing now, not Kavya" is an "owner" fact: person = Arjun, previous = Kavya.
 Copy a short exact quote (3-12 words) from the record for each fact. Skip anything else, including questions.
 Reply {"facts": [{"record": id, "kind": "owner"|"date"|"promise", "topic": short topic, "person": name or null, "previous": name or null,
-"when": date or word or null, "what": thing promised or null, "quote": exact words}]}.
+"when": date or word or null, "what": thing promised or decision or null, "quote": exact words}]}.
 
 Records:
 """
@@ -63,10 +69,11 @@ def candidates(world, day):
         if author == "system" or (author.startswith("ext:") and not r.get("client")):
             continue                               # bulk mail and notifications
         body = (r.get("body") or "").strip()
-        if not body or body.endswith("?") or len(body) > 600 or not CUES.search(body):
+        limit = 2000 if r.get("type") == "note" else 600     # meeting notes are long and hold several facts
+        if not body or body.endswith("?") or len(body) > limit or not CUES.search(body):
             continue
-        if rule_hits(r, world):
-            continue
+        if r.get("type") != "note" and rule_hits(r, world):
+            continue                               # short message already read by a rule (notes hold several facts)
         out.append(r)
     return out
 
@@ -101,6 +108,14 @@ def check(fact, by_id, world):
         if not attr or len(attr) > 25 or not d:
             return None
         return {"kind": "date", "attr": attr, "value": d.isoformat()}
+    if kind == "decision":
+        what = " ".join(str(fact.get("what") or "").split()).strip(" .,")
+        if r.get("type") not in ("note", "chat", "mail") or not r.get("client") or not 3 <= len(what) <= 120:
+            return None
+        cw = [w for w in re.findall(r"[a-z0-9]+", what.lower()) if len(w) >= 4]
+        if not cw or sum(w in body.lower() for w in cw) / len(cw) < 0.6:
+            return None                            # decision text must come from the record, not be invented
+        return {"kind": "decision", "what": what[0].upper() + what[1:]}
     if kind == "promise":
         if not F.PERSON_ID.match(str(r.get("author") or "")):
             return None
@@ -121,10 +136,17 @@ def run(con, day, usage):
     world = World(con)
     cands = candidates(world, day)
     kept = 0
-    for i in range(0, len(cands), 15):
-        batch = cands[i:i + 15]
+    batches, cur, size = [], [], 0
+    for r in cands:                                # batches by length, so every prompt stays under budget
+        w = llm.wrap(r, 2000)
+        if cur and (size + len(w) > 9000 or len(cur) >= 15):
+            batches.append(cur); cur, size = [], 0
+        cur.append(r); size += len(w)
+    if cur:
+        batches.append(cur)
+    for batch in batches:
         by_id = {r["id"]: r for r in batch}
-        data = llm.call_json(con, PROMPT + "\n".join(llm.wrap(r) for r in batch), usage, budget=3500, max_out=900)
+        data = llm.call_json(con, PROMPT + "\n".join(llm.wrap(r, 2000) for r in batch), usage, budget=3500, max_out=900)
         for f in (data or {}).get("facts", []) if isinstance(data, dict) else []:
             ok = check(f, by_id, world) if isinstance(f, dict) else None
             if ok:

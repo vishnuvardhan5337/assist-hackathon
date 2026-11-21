@@ -106,6 +106,9 @@ def corrections(world, usage=None, viewer=None):
             meeting = None
         client = meeting.get("client") if meeting else None
         org = world.org_of.get(person)
+        if not client:                             # no meeting given: the client named in the correction itself
+            client, _ = world.find_client(words, [r for r in world.records if r.get("org") == org
+                                                  and (viewer is None or world.can_see(viewer, r))])
         day = fb.get("day", 0)
         at = (world.day1.fromordinal(world.day1.toordinal() + day - 1)).isoformat() + "T23:59:59Z"
         ev = None
@@ -142,6 +145,10 @@ def corrections(world, usage=None, viewer=None):
                     pid = resolve_person(world, str(data["value"]), org, hint_attr=attr)
                     if pid:
                         ev = {"value": pid, "display": world.name(pid), "old": None}
+        if ev and client and attr:                 # 'Northbeam billing' -> 'billing' (client named in the words)
+            names = {a for a, c in world.client_aliases([r for r in world.records if r.get("client") == client]).items()
+                     if c == client} | set(world.client_name.get(client, client).lower().split())
+            attr = " ".join(w for w in attr.split() if w not in names) or attr
         if ev and client:
             ev.update(at=at, day=day, sources=[], kind="correction", authority=2, by=person)
             out.append({"client": client, "attr": attr, "event": ev})

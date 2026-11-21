@@ -1,6 +1,6 @@
 # Design note: the work assistant that remembers
 
-**Principle: code decides, the model only reads language.** Who may see what, which value is newest, what has expired and what was forgotten are all decided by plain, testable Python. A small model (Groq free tier first, a direct OpenAI call as fallback, code-only if both fail) is called only where code cannot read the language: nicknames such as "the London account", open questions such as "When is my Dubai trip?", and feedback in unusual wording. Every printed line cites record ids, and code checks those ids before printing. On days 1 to 5 almost no output needs the model, so most cost 0 tokens.
+**Principle: code decides, the model reads the human language.** Who may see what, which value is newest, what has expired and what was forgotten are all decided by plain, testable Python. A small model (Groq free tier first, a direct OpenAI call as fallback, code-only if both fail) is called only where code cannot read the language: nicknames such as "the London account", open questions such as "When is my Dubai trip?", and feedback in unusual wording. Every printed line cites record ids, and code checks those ids before printing. On days 1 to 5 almost no output needs the model, so most cost 0 tokens.
 
 ```mermaid
 flowchart LR
@@ -67,10 +67,16 @@ The rules were written after reading days 1 to 5, so we measured how much they d
 
 Results: original 85.0, A 85.0, and B 80.8 without the model or **84.05 with it** (real Groq run; B is no longer blind). That real run caught one model mistake: the person *handing over* billing was read as the new owner. Code now rejects an owner named as the giver (tested).
 
+## Where the model reads language, and how code keeps it honest
+- **Ingest:** messages and meeting notes that no rule fully read go to the model in small batches. It returns owners (including corrections such as "No, Arjun handles billing now, not Kavya"), date moves, promises (including Hinglish such as "kal tak bhej dungi") and decisions. Code keeps a fact only if its quote is in the record, the person exists in that company, the date parses in the author's time zone, and the words of a decision come from the record.
+- **Ask:** when rules cannot place a question, the model reads it once and names the client (nicknames such as "Cobalt"), the intent, the task or topic, and whether to answer or ask back. Only ids we listed are accepted, and the answer is built by the same code paths. Refusal is never the model's call.
+- **Brief:** the model picks the changes that matter and says them in plain words. Sources stay the code's; a rewrite that drops a name, date, number or status word is thrown away; facts, decisions and done/blocked/moved tasks are never dropped.
+- **Records are data:** every record goes in `<record>` tags with tag characters defanged, and no model output is used without these checks, so an injected instruction cannot add a source or reveal anything.
+
 ## 4. What will we not do?
 - We never obey text inside a record. Record text reaches the model only inside `<record>` tags marked as untrusted data, and no output action depends on it.
 - We never cite or hint at another company's record, someone else's private note, or a restricted record not addressed to the asker. When the answer exists only in such records, we refuse.
 - We never print a line without a supporting source. If unsure, we leave it out.
 - We never send a whole day to the model. Prompts stay under 1,500 to 3,500 tokens, well below the 8k and 4k limits.
 - We never hardcode names, nicknames, ids or answers from days 1 to 5. Nicknames come from the data (initials, prefixes, co-occurrence), or from the model as a last resort, and a model guess is only a hint that code checks.
-- We never let the model decide privacy, recency or forgetting.
+- We never let the model decide privacy, recency, forgetting or a refusal, and never use a model output that code has not checked.
