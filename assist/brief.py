@@ -250,5 +250,5 @@ def run(world, person, day_str):
     n = max(1, len(out))
     for b in out:                                  # spread one command's usage over its briefs
         b["usage"] = {"input_tokens": u["input_tokens"] // n, "output_tokens": u["output_tokens"] // n,
-                      "cost_usd": 0.0, "ms": u["ms"]}
+                      "cost_usd": round(u["cost_usd"] / n, 6), "ms": u["ms"]}
     return out

@@ -1,6 +1,6 @@
 # Design note: the work assistant that remembers
 
-**Principle: code decides, the model only reads language.** Who may see what, which value is newest, what has expired and what was forgotten are all decided by plain, testable Python. A small model (Groq, free tier) is called only where code cannot read the language: nicknames such as "the London account", open questions such as "When is my Dubai trip?", and feedback in unusual wording. Every printed line cites record ids, and code checks those ids before printing. On days 1 to 5 almost no output needs the model, so most cost 0 tokens.
+**Principle: code decides, the model only reads language.** Who may see what, which value is newest, what has expired and what was forgotten are all decided by plain, testable Python. A small model (Groq free tier first, a direct OpenAI call as fallback, code-only if both fail) is called only where code cannot read the language: nicknames such as "the London account", open questions such as "When is my Dubai trip?", and feedback in unusual wording. Every printed line cites record ids, and code checks those ids before printing. On days 1 to 5 almost no output needs the model, so most cost 0 tokens.
 
 ```mermaid
 flowchart LR
