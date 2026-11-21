@@ -4,3 +4,10 @@ __pycache__/
 *.db
 out/
 data/
+.demo_store/
+.manual_store/
+runs/
+assist.egg-info/
+.assist_store/
+.pytest_cache/
+.DS_Store
