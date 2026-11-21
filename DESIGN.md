@@ -45,7 +45,7 @@ SQLite file `.assist_store/assist.db`: raw records, feedback (read one day late,
 
 **Vector DB.** Records are also indexed in Chroma (local, persistent, offline embedder) for open questions. Each vector carries its company, visibility scope and readers, and every search filters on them *inside* Chroma, then passes the privacy gate again. Keyword and vector results are fused (reciprocal rank fusion). The vector DB only finds candidates; it never decides a fact, an owner or a date. If it is unavailable, keyword search takes over.
 
-Preferences and ignored topics belong only to the person who gave them. Corrections fix a team fact, but only for people in the corrector's own company.
+Preferences, ignored topics and corrections belong to the person who gave them: feedback is private. A correction changes another person's answers only when a record *they* can see already supports the corrected value, and that record is cited. Otherwise one person's feedback could tell others something nothing they can see supports.
 
 ## 3. How do we know which information is newest?
 Each client fact keeps a timeline of claims, and the resolver applies four rules:

@@ -8,8 +8,9 @@ except corrections of team facts (which fix the fact for everyone who can see it
 import re
 
 from . import llm
+from . import facts as F
 from .facts import norm_attr, resolve_person
-from .world import fmt_day, local_date, parse_day_text
+from .world import record_text as world_text, fmt_day, local_date, parse_day_text
 
 MAX_N = re.compile(r"(?i)\b(?:max(?:imum)?|at most|no more than|only|up to|limit(?: to)?)\.?\s*(\d{1,2})\s*(?:changes|items|lines|points|bullets|updates)?")
 BLOCKERS = re.compile(r"(?i)block\w*\s+(?:first|on top|at the top|up front)|(?:first|top)\W+(?:\w+\W+){0,3}block")
@@ -150,6 +151,31 @@ def corrections(world, usage=None, viewer=None):
                      if c == client} | set(world.client_name.get(client, client).lower().split())
             attr = " ".join(w for w in attr.split() if w not in names) or attr
         if ev and client:
-            ev.update(at=at, day=day, sources=[], kind="correction", authority=2, by=person)
+            srcs = []
+            if viewer is not None and viewer != person:
+                # Feedback is private to the person who gave it. For anyone else the correction counts only if a
+                # record THEY can see already supports the corrected value; that record becomes the source.
+                srcs = _support(world, viewer, client, attr, ev, at)
+                if not srcs:
+                    continue
+            ev.update(at=at, day=day, sources=srcs, kind="correction", authority=2, by=person)
             out.append({"client": client, "attr": attr, "event": ev})
     return out
+
+
+def _support(world, viewer, client, attr, ev, until):
+    """Ids of records the viewer can see (up to the correction) that state the corrected value for this topic."""
+    if F.PERSON_ID.match(str(ev["value"])):
+        p = world.people.get(ev["value"], {})
+        names = [n.lower() for n in [p.get("name", "")] + p.get("name", "").split()[:1] if n]
+    else:
+        names = [ev["display"].lower(), str(ev["value"])]
+    topic = [w for w in attr.lower().split() if len(w) >= 3]
+    out = []
+    for r in world.visible(viewer, until_ts=until):
+        if r.get("client") not in (client, None, ""):
+            continue
+        text = world_text(r).lower()
+        if any(n and n in text for n in names) and (not topic or any(t in text for t in topic)):
+            out.append(r["id"])
+    return out[-2:]

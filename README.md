@@ -20,7 +20,7 @@ Or simply `./run_eval.sh` (runs the harness, the scorer, the output validator, o
 
 **Score guards.** `tests/test_scoring.py` runs the organisers' own harness and scorer and fails if any area drops below its floor. It runs on days 1 to 5 with the official keys, and on days 1 to 7 using `tests/hidden_pack.py`: two simulated hidden days with hand-written answer keys in the official format. Their scorer then measures *Getting better* too, which needs 6+ days. Current result: **87.5/90** on days 1 to 7, with every day at 1.00. Getting better is 2.5/5 because the scores are flat at 1.00 from day 1, so there is nothing to climb. To build that pack yourself: `python3 tests/hidden_pack.py --out /tmp/hidden_pack`.
 
-**Validation.** `eval/validate_outputs.py --run <dir>` checks every output against the contract in DATA_FORMAT: exact keys, status rules, exactly one of answer/clarify/refused, `{id, text}` options, YYYY-MM-DD dates, person-id owners and token limits. It also checks that every cited id exists, had been ingested by that day, and is visible to the person. `pytest tests` (149 tests) runs the validator on a full replay, on 24 messy inputs (bad dates, unknown people, injection text) and on two simulated hidden days (restricted records, another company's records, an injection, an intern contradiction, leave that expires, forget, new promise wording). It also feeds the validator broken outputs to prove it catches each one.
+**Validation.** `eval/validate_outputs.py --run <dir>` checks every output against the contract in DATA_FORMAT: exact keys, status rules, exactly one of answer/clarify/refused, `{id, text}` options, YYYY-MM-DD dates, person-id owners and token limits. It also checks that every cited id exists, had been ingested by that day, and is visible to the person. `pytest tests` (151 tests) runs the validator on a full replay, on 24 messy inputs (bad dates, unknown people, injection text) and on two simulated hidden days (restricted records, another company's records, an injection, an intern contradiction, leave that expires, forget, new promise wording). It also feeds the validator broken outputs to prove it catches each one.
 
 The harness calls `python3 main.py ingest|brief|ask|forget ...`. Output is JSON on stdout only, and the exit code is always 0. Memory lives in `./.assist_store/` (override with `R3_STORE`). `ingest --day 1` starts a fresh store.
 
@@ -82,7 +82,7 @@ Official scorer: **85.0 / 85** (+ design note /10 by judges), with privacy 1.00 
 | `demo/app.py` | local demo UI for the video (standard library only) |
 | `demo/streamlit_app.py` | Meeting board demo (optional: `pip install streamlit streamlit-shadcn-ui`) |
 | `demo/ui_kit.py` | reusable UI components and the theme for the demo |
-| `tests/` | 149 pytest tests: privacy, facts, asks, validation, score guards, overfitting, extraction checks, vector-search privacy, model fallback chain. Model off |
+| `tests/` | 151 pytest tests: privacy, facts, asks, validation, score guards, overfitting, extraction checks, vector-search privacy, model fallback chain. Model off |
 | `tests/paraphrase_pack.py` | reworded copies of days 1 to 5 (A, and held-out B) to measure overfitting |
 | `assist/extract.py` | model step at ingest: owners/corrections, promises (incl. Hinglish), date moves, decisions; every result checked by code |
 | `tests/hidden_pack.py` | builds 2 simulated hidden days with official-format answer keys |
