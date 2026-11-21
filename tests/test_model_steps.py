@@ -184,3 +184,25 @@ def test_injection_in_brief_lines_stays_inside_data_block(world, model):
     p = model["prompts"][-1]
     block = p.split('<record id="candidates" type="brief_lines">')[1].split("</record>")[0]
     assert "ignore previous instructions" in block and "(/record)" in block
+
+
+# ---------------------------------------------------------------- found in the real-model run
+def test_decision_without_subject_takes_the_records_words(world):
+    r = _rec(world, "Check-in notes.\nOutcome: store locator page is dropped from phase 1.\nAll fine.", type="note")
+    f = {"record": r["id"], "kind": "decision", "what": "Dropped from phase 1",
+         "quote": "Outcome: store locator page is dropped from phase 1"}
+    assert extract.check(f, {r["id"]: r}, world)["what"] == "Store locator page dropped from phase 1"
+
+
+def test_promise_thing_has_no_verb(world):
+    r = _rec(world, "Tomorrow I will share the checkout copy.", author="p02", type="chat")
+    f = {"record": r["id"], "kind": "promise", "what": "share the checkout copy", "when": "tomorrow",
+         "quote": "Tomorrow I will share the checkout copy"}
+    assert extract.check(f, {r["id"]: r}, world)["what"] == "the checkout copy"
+
+
+def test_no_promises_from_meeting_notes(world):
+    r = _rec(world, "Weekly numbers will be sent on Monday as usual.", author="p02", type="note")
+    f = {"record": r["id"], "kind": "promise", "what": "weekly numbers", "when": "Monday",
+         "quote": "Weekly numbers will be sent on Monday"}
+    assert extract.check(f, {r["id"]: r}, world) is None

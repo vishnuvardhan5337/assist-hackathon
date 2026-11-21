@@ -27,7 +27,9 @@ PROMPT = """These are work messages (English, Hindi or Hinglish). Find ONLY thes
 - "promise": the AUTHOR commits to deliver something; give what and when (a date like 14 Nov, or a word like tomorrow, Friday, EOD).
   Hinglish counts: "kal tak bhej dungi" = I will send it by tomorrow; "Friday tak kar dunga" = I will do it by Friday.
 - "decision": a decision or outcome agreed for the client (something approved, dropped, chosen, cancelled, moved out of
-  scope). "what" = the decision in a few plain words, using words from the record (e.g. "Store locator dropped from phase 1").
+  scope). "what" = the decision in a few plain words, using words from the record and NAMING THE THING decided
+  (e.g. "Store locator page dropped from phase 1", never just "Dropped from phase 1").
+  For "what" in a promise give only the thing (e.g. "the checkout copy"), not the verb.
 A correction such as "No, Arjun handles billing now, not Kavya" is an "owner" fact: person = Arjun, previous = Kavya.
 Copy a short exact quote (3-12 words) from the record for each fact. Skip anything else, including questions.
 Reply {"facts": [{"record": id, "kind": "owner"|"date"|"promise", "topic": short topic, "person": name or null, "previous": name or null,
@@ -115,11 +117,21 @@ def check(fact, by_id, world):
         cw = [w for w in re.findall(r"[a-z0-9]+", what.lower()) if len(w) >= 4]
         if not cw or sum(w in body.lower() for w in cw) / len(cw) < 0.6:
             return None                            # decision text must come from the record, not be invented
+        # 'Dropped from phase 1' names no thing: use the record's own words (the quote) instead
+        if re.match(r"(?i)(dropped|approved|cancel\w*|moved|chosen|agreed|scrapped|parked|deferred|signed|confirmed|"
+                    r"removed|cut|added|kept|out of|is |was |will )", what) and \
+                set(re.findall(r"[a-z0-9]+", what.lower())) <= set(re.findall(r"[a-z0-9]+", quote.lower())):
+            what = re.sub(r"(?i)^(outcome|decision|decided|agreed|final call|resolved)\s*[:\-]\s*", "", quote).strip(" .,")
+            what = re.sub(r"(?i)\b(is|was|has been|will be)\s+(?=(dropped|approved|cancel|moved|scrapped|parked|deferred|removed|cut))", "", what)
+            if len(what) > 120:
+                return None
         return {"kind": "decision", "what": what[0].upper() + what[1:]}
     if kind == "promise":
-        if not F.PERSON_ID.match(str(r.get("author") or "")):
-            return None
+        if r.get("type") not in ("chat", "mail") or not F.PERSON_ID.match(str(r.get("author") or "")):
+            return None                            # same as the rules: promises are made in chats and mails
         what = str(fact.get("what") or "").strip(" .,")
+        what = re.sub(r"(?i)^(?:the\s+)?(?:send|share|deliver|get|forward|bhej\w*|share kar\w*)\s+(?:over\s+)?", "", what)
+        what = re.sub(r"(?i)\s+(?:will be with you|over to you|to you)$", "", what).strip(" .,")
         d = F.due_from(str(fact.get("when") or ""), today)
         if len(what) < 3 or len(what) > 80 or not d:
             return None
